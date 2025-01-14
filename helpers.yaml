@@ -1,0 +1,65 @@
+# In configuration.yaml
+input_select:
+  akkusteuerung_sma_wr:
+    name: "Batterij Modus"
+    options:
+      - "Akku schnell Laden"
+      - "Akku schnell Entladen"
+      - "Akku Pause"
+      - "Akku Automatisch"
+      - "Akku 0.2C Laden"
+    initial: "Akku Automatisch"
+
+input_number:
+  akkusteuerung_ladestaerke_soll:
+    name: "Gewenst laadvermogen"
+    min: 100
+    max: 10000
+    step: 100
+    unit_of_measurement: "W"
+    mode: slider
+    
+  akkusteuerung_entladestaerke_soll:
+    name: "Gewenst ontlaadvermogen"
+    min: 100
+    max: 10000
+    step: 100
+    unit_of_measurement: "W"
+    mode: slider
+    
+  akkusteuerung_02c_ladestaerke:
+    name: "0.2C laadvermogen"
+    min: 100
+    max: 10000
+    step: 100
+    unit_of_measurement: "W"
+    mode: slider
+
+  akkusteuerung_wr_70proz_ueberschuss_grenze:
+    name: "70% overproductie grens"
+    min: 100
+    max: 10000
+    step: 100
+    unit_of_measurement: "W"
+    mode: slider
+
+  akkusteuerung_wr_ac_ueberschuss_grenze:
+    name: "AC overproductie grens"
+    min: 100
+    max: 10000
+    step: 100
+    unit_of_measurement: "W"
+    mode: slider
+
+  akkusteuerung_ab_welchem_restertrag_vollladen:
+    name: "Minimale restopbrengst voor volladen"
+    min: 1
+    max: 100
+    step: 1
+    unit_of_measurement: "kWh"
+    mode: slider
+
+input_boolean:
+  akku_opti_automatik:
+    name: "Batterij optimalisatie automatisch"
+    initial: off
