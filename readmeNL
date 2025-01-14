@@ -1,0 +1,202 @@
+Prognosegebaseerde & Handmatige Besturing voor Home Assistant van SMA STP SE Hybride Omvormer
+DISCLAIMER: Alles op eigen risico! Ik neem geen verantwoordelijkheid voor schade of problemen die hierdoor ontstaan. Dit project wordt op geen enkele manier ondersteund of begeleid door SMA.
+
+Nieuwe bètaversie sinds 16-07-2024 herstelt de oude functionaliteit waarmee de omvormer direct via Modbus kan worden aangestuurd. Grid Guard Code, enz. niet meer nodig!
+
+(work in progress, nog niet volledig!)
+
+Handleiding
+Wat doet dit precies?
+
+Acculaadregeling via de omvormer zelf (indien de updates tijdig zijn uitgeschakeld OF de nieuwe bètaversie voor de SHM 2.0 is geïnstalleerd).
+
+Een deel is de pure acculaad-/ontlaadregeling die handmatig kan worden geselecteerd. Het andere deel is de Opti-Automatiek die de laadsnelheid beperkt tot 0,2C (of een gewenste laadsnelheid), de accu 's ochtends eerst tot 50% oplaadt en daarna pauzeert totdat de gewenste resterende productieprognose is bereikt. Daarna wordt de accu verder tot 90% geladen met 0,2C en vervolgens met 1 kW tot 100%.
+
+De SMA-integratie in Home Assistant moet worden ingesteld om de SoC (State of Charge) van de accu te kunnen uitlezen, evenals een Solcast-account voor de voorspelling van de PV-opbrengst.
+
+opti-automatik.yaml - Hiermee wordt de accu via de SHM 2.0 en een geactiveerde GGC gericht geladen, gepauzeerd en voltooid geladen met 0,2C of 1 kW via de verdere automatisering.
+
+sma-se-akku-steuerung.yaml - Als de omvormer nog direct kan worden aangestuurd en de laatste updates niet zijn geïnstalleerd / de nieuwe bètaversie (zie boven) aanwezig is, kan deze stuurautomatisering worden gebruikt.
+
+configuration.yaml - Invoeren voor de omvormer. Vergeet de sensor voor de temperatuur niet, zonder deze sensor werkt de Modbus-integratie niet betrouwbaar.
+
+Wie alleen de pure acculaadregeling wil, hoeft alleen de "sma-se-akku-steuerung.yaml" als automatisering aan te maken en de hieronder vermelde helpers en surplus-acculaadlogica op te zetten.
+
+ToDo:
+
+Accu in de winter minimaal 1x per week automatisch tot 100% opladen
+Eventueel laadsnelheid vanaf 95-98% beperken tot 500 Watt
+SBS-versie
+HACS-versie voor de pure acculaadregeling
+English Version of this?
+Voeg de configuratie.yaml-invoer toe aan de overeenkomstige map in Home Assistant.
+
+Er is een sensor nodig die het mogelijke overschot voor de accu berekent en een sensor voor het actuele huisverbruik.
+
+
+Bijvoorbeeld voor het mogelijke acculaadoverschot:
+- unique_id: maximaler_ueberschuss_akkuladung
+  device_class: power
+  state_class: measurement
+  name: Maximaal overschot voor acculaadvermogen Watt
+  unit_of_measurement: W
+  state: "{{ (states('sensor.pv_generation_komplett_watt') | float) - (states('sensor.home_energy_usage_watt') | float) - (states('sensor.sn_xxxxxxx_metering_power_absorbed') | float) + ((states('sensor.goecharger_wallbox_hinten_p_all')  | float )* 1000)  }}"
+
+
+Bijvoorbeeld voor PV-overschot warp3_2asq_powernow is mijn laadstation:
+- unique_id: maximaler_ueberschuss_akkuladung
+  device_class: power
+  state_class: measurement
+  name: Maximaal overschot voor acculaadvermogen Watt
+  unit_of_measurement: W
+  state: "{{ (states('sensor.pv_generation_komplett_watt') | float) - (states('sensor.home_energy_usage_watt') | float) - (states('sensor.sn_3015*****_battery_power_charge_total') | float) + (states('sensor.sn_3015*****_metering_power_absorbed') | float) + ((states('sensor.warp3_2asq_powernow')  | float ))  }}"
+
+
+Bijvoorbeeld voor het PV-overschot om eventueel de 70%-begrenzing te herkennen:
+- unique_id: akkusteuerung_ueberschuss_pv
+  device_class: power
+  state_class: measurement
+  name: Overschot PV Watt
+  unit_of_measurement: W
+  state: "{{ (states('sensor.pv_generation_komplett_watt') | float(0) - (states('sensor.home_energy_usage_watt') | float) - (states('sensor.sn_3017XXXXXX_metering_power_absorbed') | float) )  }}"
+
+
+Bijvoorbeeld voor het huisverbruik:
+- unique_id: home_energy_usage_w
+  device_class: power
+  state_class: measurement
+  name: Huisverbruik Watt
+  unit_of_measurement: W
+  state: "{{ (states('sensor.sn_3017XXXXXX_metering_power_absorbed') | float) + (states('sensor.sn_3017XXXXXX_grid_power') | float) - (states('sensor.sn_3017XXXXXX_metering_power_supplied') | float)}}"
+
+Extra: Twee sensoren die efficiëntie en accucycli bijhouden in Home Assistant:
+
+- unique_id: byd_akku_wirkungsgrad_lade_entlade
+  name: BYD Accu Efficiëntie Lading en Ontlading
+  unit_of_measurement: factor
+  state: "{{ ((states('sensor.sn_3017XXXXXX_battery_discharge_total') | float) / (states('sensor.sn_3017XXXXXX_battery_charge_total') | float) * 100) | round(2) }}"
+
+- unique_id: byd_akku_zyklen
+  name: BYD Accu Cycli
+  unit_of_measurement: factor
+  state: "{{ (((((states('sensor.sn_3017XXXXXX_battery_discharge_total') | float) + (states('sensor.sn_3017XXXXXX_battery_charge_total') | float)) / 100 ) * (states('sensor.sn_3017XXXXXX_battery_capacity_total')) | float) / (2*10.2) ) | round(1) }}"
+
+Berekening van resterende looptijd:
+
+- unique_id: "house_battery_runtime_raw"
+  name: "Acculooptijd Bruto"
+  unit_of_measurement: "uren"
+  state: >
+    {% set battery_load = -1 * float(states('sensor.house_battery_load_30_mins')) if states('sensor.house_battery_load_30_mins')|is_number else 0 %}
+    {% if battery_load == 0 %}
+    {% set runtime = 0 %}
+    {% else %}
+    {% set solis_remaining_capacity = states('sensor.sn_30156*****_battery_soc_total') %}
+    {% set remaining_capacity = 12.8 - (0.1280 * (100.0 - float(solis_remaining_capacity) if solis_remaining_capacity != 'unknown' and solis_remaining_capacity|float >= 0 else 0)) %}
+    {% set runtime = remaining_capacity / (battery_load/1000) %}
+    {% endif %}
+    {{ runtime }}
+
+Voor bovenstaande is een statistische sensor nodig, bijvoorbeeld in sensor/statistiek.yaml:
+- platform: statistics
+  name: "House Battery Load 30 mins"
+  entity_id: sensor.sn_3015*****_battery_power_discharge_total
+  state_characteristic: mean
+  max_age:
+    minutes: 30
+
+De volgende Home Assistant-helper moet worden ingesteld om de accumodus te selecteren:
+
+<img width="322" alt="image" src="https://github.com/user-attachments/assets/be8c061f-681d-4acb-bbc4-47f3ca9a9a49">
+Maak daarnaast een schakelaar aan voor akku_opti_automatik, waarmee je bepaalt of de laadoptimalisatie mag draaien.
+
+Vier invoernummers moeten worden aangemaakt, met een minimaal bereik van 100 en maximaal 10.000 (Watt):
+
+input_number.akkusteuerung_ladestaerke_soll
+input_number.akkusteuerung_entladestaerke_soll
+input_number.akkusteuerung_02c_ladestaerke
+
+De vierde helper moet de waarde bevatten (of een iets lagere waarde) die de 70%-begrenzing bevat. Bijvoorbeeld 7.000 Watt bij een 10 kW-installatie of net iets daaronder, zoals 6.800 Watt:
+
+input_number.akkusteuerung_wr_70proz_ueberschuss_grenze
+Een andere helper ontvangt de maximale AC-invoercapaciteit van de omvormer, zoals 10.000 Watt voor een SMA STP SE 10.0, of iets lager, bijvoorbeeld 9.900 Watt:
+
+input_number.akkusteuerung_wr_ac_ueberschuss_grenze
+De laatste helper kan bijvoorbeeld 1-100 kWh instellen, waarmee de drempel wordt bepaald wanneer de accu vanaf 50% wordt opgeladen:
+
+input_number.akkusteuerung_ab_welchem_restertrag_vollladen
+
+Home Assistant-kaartenconfiguratie:
+
+<img width="500" alt="image" src="https://github.com/Optic00/ha-smase-akkusteuerung/assets/20187253/6a1ae098-817a-4029-b732-442eeee4ae6d"> <img width="505" alt="image" src="https://github.com/user-attachments/assets/82cfe4d3-9034-4cf5-953c-65b624f5250e">
+
+type: vertical-stack
+cards:
+  - type: custom:mushroom-title-card
+    title: Akkusteuerung SMA STP-SE
+  - type: custom:mushroom-chips-card
+    chips:
+      - type: conditional
+        conditions:
+          - condition: numeric_state
+            entity: sensor.sn_30XXXXXXXX_battery_power_discharge_total
+            above: 0.001
+        chip:
+          type: template
+          entity: sensor.sn_30XXXXXXXX_battery_power_discharge_total
+          content: '{{( states(entity) | float / 1000) | round(2) }}  kW '
+          icon: mdi:battery-minus
+          icon_color: red
+      - type: conditional
+        conditions:
+          - condition: numeric_state
+            entity: sensor.sn_30XXXXXXXX_battery_power_charge_total
+            above: 0.001
+        chip:
+          type: entity
+          entity: sensor.sn_30XXXXXXXX_battery_power_charge_total
+          icon: mdi:battery-positive
+          icon_color: green
+      - type: entity
+        entity: sensor.sn_30XXXXXXXX_battery_soc_total
+        icon_color: blue
+      - type: template
+        entity: sensor.byd_12_8_akku_wirkungsgrad_ladung_und_entladung
+        content: '{{ states(entity) | round (1)}}% η'
+        icon: mdi:vector-difference
+        icon_color: orange
+      - type: template
+        entity: sensor.byd_12_8_akku_zyklen
+        content: '{{ states(entity)}}'
+        icon: mdi:counter
+        icon_color: yellow
+      - type: entity
+        entity: sensor.sn_30XXXXXXXX_battery_temp_a
+        icon: mdi:battery-charging-wireless-outline
+      - type: entity
+        entity: sensor.sma_stp_se_temperatur
+        icon: mdi:power-socket-it
+  - type: custom:mushroom-select-card
+    entity: input_select.akkusteuerung_sma_wr
+    name: Akkusteuerung
+    primary_info: name
+    secondary_info: last-changed
+  - type: tile
+    entity: input_boolean.akku_opti_automatik
+  - type: tile
+    entity: input_boolean.akku_nach_preis_laden
+  - type: tile
+    entity: input_boolean.pv_module_nicht_verfugbar
+    name: PV-Module NA (bijv. bedekt met sneeuw)
+  - type: horizontal-stack
+    cards:
+      - type: tile
+        entity: sensor.sn_30XXXXXXXX_battery_discharge_total
+        name: Ontladen Watt
+      - type: tile
+        entity: sensor.sn_30XXXXXXXX_battery_charge_total
+        name: Laden Watt
+  - type: entities
+    entities:
+      - entity: input_number.akkusteuerung_ladestaerke_soll
+      - entity: input_number.akkusteuerung_entladestaerke_soll
