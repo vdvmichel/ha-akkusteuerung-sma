@@ -63,3 +63,41 @@ input_boolean:
   akku_opti_automatik:
     name: "Batterij optimalisatie automatisch"
     initial: off
+
+
+
+sensor:
+  - platform: template
+    sensors:
+      maximaler_ueberschuss_akkuladung:
+        unique_id: maximaler_ueberschuss_akkuladung
+        device_class: power
+        state_class: measurement
+        name: "Maximaal beschikbaar vermogen voor batterij laden"
+        unit_of_measurement: W
+        state: >-
+          {{ (states('sensor.sn_3008959151_pv_power') | float) - 
+             (states('sensor.sn_3008959151_metering_power_absorbed') | float) - 
+             (states('sensor.sn_3008959151_battery_power_charge_total') | float) }}
+
+      ueberschuss_pv_watt:
+        unique_id: akkusteuerung_ueberschuss_pv
+        device_class: power
+        state_class: measurement
+        name: "PV Overproductie"
+        unit_of_measurement: W
+        state: >-
+          {{ (states('sensor.sn_3008959151_pv_power') | float) - 
+             (states('sensor.sn_3008959151_metering_power_absorbed') | float) }}
+
+      home_energy_usage:
+        unique_id: home_energy_usage_w
+        device_class: power
+        state_class: measurement
+        name: "Huisverbruik"
+        unit_of_measurement: W
+        state: >-
+          {{ (states('sensor.sn_3008959151_metering_power_absorbed') | float) + 
+             (states('sensor.sn_3008959151_grid_power') | float) - 
+             (states('sensor.sn_3008959151_metering_power_supplied') | float)}}
+    
