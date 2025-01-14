@@ -64,8 +64,6 @@ input_boolean:
     name: "Batterij optimalisatie automatisch"
     initial: off
 
-
-
 sensor:
   - platform: template
     sensors:
@@ -75,7 +73,7 @@ sensor:
         state_class: measurement
         name: "Maximaal beschikbaar vermogen voor batterij laden"
         unit_of_measurement: W
-        state: >-
+        value_template: >-
           {{ (states('sensor.sn_3008959151_pv_power') | float) - 
              (states('sensor.sn_3008959151_metering_power_absorbed') | float) - 
              (states('sensor.sn_3008959151_battery_power_charge_total') | float) }}
@@ -86,7 +84,7 @@ sensor:
         state_class: measurement
         name: "PV Overproductie"
         unit_of_measurement: W
-        state: >-
+        value_template: >-
           {{ (states('sensor.sn_3008959151_pv_power') | float) - 
              (states('sensor.sn_3008959151_metering_power_absorbed') | float) }}
 
@@ -96,8 +94,7 @@ sensor:
         state_class: measurement
         name: "Huisverbruik"
         unit_of_measurement: W
-        state: >-
+        value_template: >-
           {{ (states('sensor.sn_3008959151_metering_power_absorbed') | float) + 
              (states('sensor.sn_3008959151_grid_power') | float) - 
-             (states('sensor.sn_3008959151_metering_power_supplied') | float)}}
-    
+             (states('sensor.sn_3008959151_metering_power_supplied') | float) }}
